@@ -110,36 +110,11 @@ canary hợp lệ, nhưng cản nhãn đó.
 | Bước | Trạng thái | Chặn bởi |
 | --- | --- | --- |
 | 1 — rehearsal synthetic | **xong ở mức source** | — (test tự dựng DB synthetic) |
-| 2 — allow/deny + routing | **xong ở mức source** | — (`key_policy_routing_test.go` chạy router thật + SQLite + upstream giả) |
+| 2 — allow/deny + routing | chưa | cần gateway sandbox chạy được; G04 đã có test riêng |
 | 3 — restart/rollback | chưa | cần artifact P3; artifact bị chặn vì thiếu Bun |
 | 4 — dữ liệu thật | chưa | chưa được cấp quyền đọc snapshot thật |
 | 5 — live canary | chưa | chưa được cấp quyền deployment |
 | 6 — cutover | chưa | chưa có xác nhận của người dùng |
-
-### Bước 2 — phủ tới đâu, và cái gì KHÔNG được phủ
-
-Năm gạch đầu dòng của bước 2 ánh xạ sang `internal/integration/key_policy_routing_test.go`
-chạy bằng `go test -tags=integration`:
-
-| Yêu cầu | Test |
-| --- | --- |
-| Key restricted-empty bị từ chối ở mọi đường, kèm `model_not_allowed` | `TestDenyAllKeyIsRefusedOnEveryInferenceLane` (chat, messages, responses, combo, embeddings, images) |
-| `/v1/models` không được liệt kê thứ key không gọi được | `TestDenyAllKeySeesNoModels`, `TestAllowlistedKeyListsExactlyItsModels` |
-| Combo grant không cấp quyền gọi trực tiếp leaf | `TestComboGrantDoesNotGrantDirectLeafAccess` |
-| Allowlist phải bám id client gõ, không phải id resolver ra | `TestAllowlistFollowsTheAliasTheCallerUsed` |
-| Strict proxy lỗi phải trả 502, không direct dial | `TestStrictProxyRefusalIsABadGateway` |
-| `/v1/models/info` không mô tả model bị từ chối | `TestDeniedModelIsNotDescribedByModelsInfo` |
-
-**Storage failure không test được ở tầng integration.** Middleware auth đọc
-bảng `apiKeys` trước khi handler chạy, nên đóng DB thì middleware trả 500 và
-request không bao giờ tới gate — fixture không cô lập được "gate gặp lỗi storage".
-Trường hợp đó được pin ở `TestModelAccess_FailClosedSemantics`
-(`internal/handlers/chat/access_failclosed_test.go`), nơi gọi thẳng
-`checkModelAccess` trên repo đã đóng.
-
-**Bước 2 KHÔNG chứng minh:** provider/account binding trên nhiều connection
-cùng provider (đã có ở `routing_test.go`, không lặp lại ở đây), và mọi thứ cần
-gateway + provider thật — đó là bước 4–6.
 
 Bước 1 đã chạy được vì nó không cần gì ngoài repo: DB synthetic do test tự
 dựng, không network, không process. Bước 2 trở đi đều cần thứ nằm ngoài repo.
