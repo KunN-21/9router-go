@@ -31,7 +31,7 @@ var dialer = &net.Dialer{
 			return fmt.Errorf("testnet: refusing %q: %w", address, err)
 		}
 		ip := net.ParseIP(host)
-		if ip == nil || !(ip.IsLoopback() || ip.IsUnspecified()) {
+		if ip == nil || (!ip.IsLoopback() && !ip.IsUnspecified()) {
 			return fmt.Errorf("testnet: outbound blocked to %s", address)
 		}
 		return nil
@@ -50,6 +50,6 @@ func Seal() {
 	// the transport would dial the proxy's address, which is not loopback.
 	for _, key := range []string{"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
 		"http_proxy", "https_proxy", "all_proxy", "no_proxy"} {
-		os.Unsetenv(key)
+		_ = os.Unsetenv(key)
 	}
 }

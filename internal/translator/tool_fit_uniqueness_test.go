@@ -10,10 +10,10 @@ func TestToolFit_ExistingUniquenessAndRestore(t *testing.T) {
 	t.Run("CollidingLongPrefixesTruncateUniquelyUnderMaxLimit", func(t *testing.T) {
 		// Fixture with multiple tools sharing a common prefix exceeding 64 characters
 		sharedPrefix := "mcp__enterprise_cloud_cluster_management__execute_critical_operation_step_" // 75 chars
-		longA := sharedPrefix + "provision_primary_database_node"                             // 107 chars
-		longB := sharedPrefix + "provision_secondary_replica_node"                            // 108 chars
-		longC := sharedPrefix + "provision_tertiary_witness_node"                             // 106 chars
-		longD := sharedPrefix + "provision_quaternary_backup_node"                            // 107 chars
+		longA := sharedPrefix + "provision_primary_database_node"                                    // 107 chars
+		longB := sharedPrefix + "provision_secondary_replica_node"                                   // 108 chars
+		longC := sharedPrefix + "provision_tertiary_witness_node"                                    // 106 chars
+		longD := sharedPrefix + "provision_quaternary_backup_node"                                   // 107 chars
 
 		shortUntouched := "read_system_metrics"
 		boundary64 := "exactly_sixty_four_characters_long_tool_name_abcdefghijklmnopqrs" // 64 chars
