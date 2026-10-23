@@ -150,7 +150,10 @@ func startTray() error {
 	if _, err := os.Stat(exe); err != nil {
 		return fmt.Errorf("tray: %s not found next to %s — install the 9router-tray package", filepath.Base(exe), filepath.Base(self))
 	}
-	cmd := exec.Command(exe, "--port", strconv.Itoa(config.LoadConfig().Port))
+	// CommandContext with a context that is never cancelled, not a deadline:
+	// this process is released immediately below and is meant to outlive the
+	// terminal, so a deadline here would kill the tray it just started.
+	cmd := exec.CommandContext(context.Background(), exe, "--port", strconv.Itoa(config.LoadConfig().Port))
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, os.Stdout, os.Stderr
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("tray: start %s: %w", filepath.Base(exe), err)
