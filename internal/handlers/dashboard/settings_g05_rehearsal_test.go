@@ -114,6 +114,9 @@ func TestG05RehearsalRoundTrip(t *testing.T) {
 			}
 			got = append(got, m)
 		}
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
 		sort.Strings(want)
 		if fmt.Sprint(got) != fmt.Sprint(want) {
 			t.Fatalf("%s access = %v, want %v", keyID, got, want)

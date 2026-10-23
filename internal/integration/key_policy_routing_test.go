@@ -76,16 +76,26 @@ func TestDenyAllKeyIsRefusedOnEveryInferenceLane(t *testing.T) {
 // assertAccessDenialCode checks the semantic code, not just the status: a 403
 // produced by some other policy (quota, expiry) must not be mistaken for the
 // model-access denial this suite is about.
+//
+// The pair below is upstream's, reached through errorResponse(FORBIDDEN, …) →
+// buildErrorBody → ERROR_TYPES[403], which the port reproduces in
+// internal/handlerutil/response.go. There is no "model_not_allowed" code
+// anywhere in the tree. The full body — including the message naming the
+// requested model — is pinned at the unit level in
+// internal/handlers/chat/access_error_shape_test.go; this suite only has to
+// prove the gate reaches that writer.
 func assertAccessDenialCode(t *testing.T, res *Result) {
 	t.Helper()
 	var envelope struct {
 		Error struct {
+			Type string `json:"type"`
 			Code string `json:"code"`
 		} `json:"error"`
 	}
 	res.Decode(t, &envelope)
-	if envelope.Error.Code != "model_not_allowed" {
-		t.Errorf("error.code = %q, want model_not_allowed (body: %s)", envelope.Error.Code, truncate(res.Body))
+	if envelope.Error.Type != "permission_error" || envelope.Error.Code != "insufficient_quota" {
+		t.Errorf("error = {%q, %q}, want {permission_error, insufficient_quota} (body: %s)",
+			envelope.Error.Type, envelope.Error.Code, truncate(res.Body))
 	}
 }
 
