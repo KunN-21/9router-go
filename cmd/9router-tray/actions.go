@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"time"
 
 	"9router/proxy/internal/daemon"
 	"9router/proxy/internal/proc"
@@ -39,17 +42,31 @@ func gatewayPath() (string, error) {
 	return exe, nil
 }
 
+// cliTimeout bounds one gateway CLI call. It has to clear daemon.StartupTimeout
+// (20s, the wait for /health) with room to spare: a shorter deadline would
+// report a failure for a gateway that is still booting and about to answer.
+const cliTimeout = daemon.StartupTimeout + 15*time.Second
+
 // runGatewayCLI shells out to the gateway binary. The tray never builds a
 // request of its own, so every identity check that already guards the CLI
 // guards the tray too.
+//
+// The context is not decoration: without it a `start` that hangs holds this
+// goroutine forever, and the menu item stays dead for the rest of the session
+// because the click channel has exactly one consumer.
 func runGatewayCLI(args ...string) error {
 	exe, err := gatewayPath()
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(exe, args...)
+	ctx, cancel := context.WithTimeout(context.Background(), cliTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, exe, args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return fmt.Errorf("%s %v: no answer in %s", filepath.Base(exe), args, cliTimeout)
+		}
 		return fmt.Errorf("%s %v: %w: %s", filepath.Base(exe), args, err, trimOutput(out))
 	}
 	return nil

@@ -65,7 +65,9 @@ func scanProcNetTCP(path, wantPortHex string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	defer f.Close()
+	// Read-only file: a close error cannot lose data, and the caller's question
+	// ("who owns this socket") is already answered by the bytes read above.
+	defer func() { _ = f.Close() }()
 
 	scanner := bufio.NewScanner(f)
 	scanner.Scan() // header
