@@ -48,10 +48,15 @@ func runGUI(actions tray.Actions, port int) error {
 // pid file plus a non-blocking service probe costs nothing.
 func runMenu(actions tray.Actions, port int) {
 	m := &menu{
-		status:    systray.AddMenuItem("9Router", ""),
-		start:     systray.AddMenuItem("Start Gateway", ""),
-		stop:      systray.AddMenuItem("Stop Gateway", ""),
-		autostart: systray.AddMenuItem("Auto-start on Boot", ""),
+		status: systray.AddMenuItem("9Router", ""),
+		start:  systray.AddMenuItem("Start Gateway", ""),
+		stop:   systray.AddMenuItem("Stop Gateway", ""),
+		// A real checkbox rather than a "✓ " prefix: the prefix is a picture of
+		// a checkbox that the OS will not toggle, and users click it expecting
+		// the check to move. AddMenuItemCheckbox is checkable on Windows and
+		// macOS; on Linux it is the same call, and the checked state still
+		// renders through Check/Uncheck.
+		autostart: systray.AddMenuItemCheckbox("Enable Auto-start", "", false),
 	}
 	m.status.Disable()
 
@@ -77,8 +82,10 @@ func runMenu(actions tray.Actions, port int) {
 	}()
 	go func() {
 		for range m.autostart.ClickedCh {
-			// Read again rather than trusting the label: the entry may have
-			// been changed by the CLI since this menu was last drawn.
+			// Read the installed state again rather than trusting the checkbox:
+			// the entry may have changed via the CLI since the last refresh.
+			// The checkbox is the user's intent, the service is the truth, and
+			// when they disagree the service wins and the box snaps back.
 			report(actions.SetAutostart(!actions.AutostartEnabled()))
 			refresh(m, actions)
 		}
@@ -124,11 +131,13 @@ func refresh(m *menu, actions tray.Actions) {
 		m.stop.Hide()
 	}
 
-	label := "Auto-start on Boot"
+	// The checkbox reflects what is installed, not what was last clicked: a
+	// failed install leaves the box where the service actually is.
 	if actions.AutostartEnabled() {
-		label = "✓ Auto-start on Boot"
+		m.autostart.Check()
+	} else {
+		m.autostart.Uncheck()
 	}
-	m.autostart.SetTitle(label)
 }
 
 // report surfaces a failure without ever printing a credential (C6): errors
