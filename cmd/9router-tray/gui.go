@@ -1,3 +1,16 @@
+//go:build windows || tray
+
+// The build constraint is what keeps `go vet ./...`, `go test ./...` and
+// golangci-lint green on a Linux box. getlantern/systray compiles through
+// pkg-config for ayatana-appindicator3-0.1 on Linux and through Cocoa on
+// macOS, so an unconstrained import would make every workspace command fail on
+// a machine that has no GUI toolkit — for a dependency none of those commands
+// exercise (docs/specs/tray-companion-architecture.md §X2).
+//
+// Windows is in the constraint without a tag because systray reaches the Win32
+// API directly there: no cgo, no pkg-config, nothing to install. Requiring a
+// tag on the one platform that builds out of the box would mean a plain
+// `go build ./cmd/9router-tray/` silently produces the stub instead.
 package main
 
 import (

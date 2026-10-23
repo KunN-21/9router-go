@@ -38,7 +38,7 @@
 
 **Ba trạng thái render, và trạng thái thứ ba là trạng thái thật:** `Running`, `Stopped`, `Unknown`. `Info.ActiveUnknown` (`internal/service/service.go:76-80`) có nghĩa "không hỏi được", **không** có nghĩa "không chạy". Một tray in `Stopped` khi thực chất là `Unknown` đang nói dối người dùng, và sẽ khiến họ bấm `Start` trên một gateway đang chạy (§7.1, §10).
 
-**Trạng thái:** tài liệu đặc tả thuần tuý. `cmd/9router-tray/`, `internal/tray/`, cũng như mọi tệp `.go` đều **không** được tạo hay sửa (xem §11, STOP Gate).
+**Trạng thái:** Phase 1 đã triển khai trong PR #577 (`cmd/9router-tray/`, `internal/tray/`). §11 ghi lại trạng thái của tài liệu **tại thời điểm nó được viết**; ma trận nghiệm thu §8 vẫn chưa chạy, nên G27 vẫn mở.
 
 ---
 
@@ -149,6 +149,8 @@ Mỗi bất biến có: phát biểu, cơ chế thực thi, và cái gì hỏng 
 **Cơ chế:** `CROSS_TARGETS := linux-amd64 linux-arm64 darwin-amd64 darwin-arm64 windows-amd64` (`Makefile:197`). `AGENTS.md:161-164` cho một vòng kiểm copy-runnable; `AGENTS.md:171` cấm "any library requiring cgo" và `:172` cấm build tag phá bất kỳ target nào. Tray nằm ở `cmd/9router-tray/`, **ngoài** vòng `cross-one` (`Makefile:217`, `go build … ./cmd/9router-go/`) và ngoài mọi target của `CROSS_TARGETS`.
 
 **Điểm dễ hiểu sai:** "tray được phép dùng cgo" không phải một ngoại lệ của `AGENTS.md §4.F` — nó là kết quả của việc `§4.F` chỉ ràng buộc **binary được ship trong `CROSS_TARGETS`**. Tray là binary thứ hai, không có mặt trong vòng lặp đó. Nếu ai thêm `cmd/9router-tray` vào `CROSS_TARGETS` hoặc vào `cross`, C1 vỡ ngay lập tức và vỡ cho cả năm target cùng lúc.
+
+**Hệ quả lên `./...`:** `go vet ./...`, `go test ./...` và `golangci-lint run ./...` đều duyệt **mọi** package, kể cả tray — nên một import GUI không có build constraint sẽ kéo `pkg-config ayatana-appindicator3-0.1` vào mọi lệnh workspace trên Linux, và làm đỏ ba job CI trên runner không cài `libayatana-appindicator3-dev`. Vì vậy `cmd/9router-tray/gui.go` mang `//go:build windows || tray`: Windows vào constraint không cần tag (systray gọi thẳng Win32 API, không cgo, không pkg-config), macOS/Linux cần `-tags tray` và phải build trên host thật của chúng. Bản build không có tag sinh ra `gui_stub.go`, thoát lúc khởi động kèm tên flag cần thêm — im lặng không hiện icon thì người dùng sẽ đi tìm lỗi ở gateway. Job `Build tray binary` trong `ci.yml` chạy trên `windows-latest` để constraint này không âm thầm che một `gui.go` hỏng.
 
 **Khi vi phạm:** một dependency GUI cần cgo trong core biến "một binary di động" thành "một bản build cho mỗi nền tảng" — đúng thứ `AGENTS.md:172` nói pipeline này tồn tại để tránh.
 
