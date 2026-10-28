@@ -200,9 +200,6 @@ func ExtractSessionID(r *http.Request) string {
 	}
 	for _, key := range SessionHeaderKeys {
 		if val := strings.TrimSpace(r.Header.Get(key)); val != "" {
-			if len(val) > 256 {
-				return val[:256]
-			}
 			return val
 		}
 	}

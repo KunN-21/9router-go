@@ -202,12 +202,12 @@ func TestGetBestConnection_StickyLimitHigherDistributesNewSessions(t *testing.T)
 		t.Fatalf("session 1: expected conn-st-1, got %v (err=%v)", c1, err)
 	}
 
-	c2, _, err := h.GetBestConnectionWithContext(ctxSess2, "codex", "", nil, "conn-st-2")
+	c2, _, err := h.GetBestConnectionWithContext(ctxSess2, "codex", "", nil, "gpt-5.6")
 	if err != nil || c2 == nil || c2.ID != "conn-st-2" {
 		t.Fatalf("session 2: expected conn-st-2, got %v (err=%v)", c2, err)
 	}
 
-	c3, _, err := h.GetBestConnectionWithContext(ctxSess3, "codex", "", nil, "conn-st-3")
+	c3, _, err := h.GetBestConnectionWithContext(ctxSess3, "codex", "", nil, "gpt-5.6")
 	if err != nil || c3 == nil || c3.ID != "conn-st-3" {
 		t.Fatalf("session 3: expected conn-st-3, got %v (err=%v)", c3, err)
 	}
