@@ -185,11 +185,17 @@ func (h *ChatHandler) handleAccountFallback(
 			IsStream: isStream, TranslateResponse: translateResponse, Endpoint: endpoint,
 		}); err == nil {
 			RecordAttemptFromContext(ctx, connObj.ID, connObjName(connObj), provider, model, 200, nil, time.Since(attemptStart).Milliseconds())
+			if sessionID := handlerutil.GetSessionID(ctx); sessionID != "" {
+				h.getSessionAffinity().Bind(provider, model, sessionID, connObj.ID)
+			}
 			return nil
 		} else {
 			lastErr = err
 			observ.IncFallback(provider, model, observ.FallbackReasonUpstreamError)
 			RecordAttemptFromContext(ctx, connObj.ID, connObjName(connObj), provider, model, 0, err, time.Since(attemptStart).Milliseconds())
+			if sessionID := handlerutil.GetSessionID(ctx); sessionID != "" {
+				h.getSessionAffinity().Evict(provider, model, sessionID)
+			}
 		}
 		// A node-state refusal (contract ended, lifetime quota spent) answers 403, which
 		// is a retryable status, so without this it would fall into the generic branch
