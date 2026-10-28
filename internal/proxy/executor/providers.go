@@ -95,8 +95,10 @@ func ForwardCodex(w http.ResponseWriter, req *Request) error {
 	// Inject prompt_cache_key for stable Codex prompt caching if not already set
 	transformedBody = injectCodexPromptCacheKey(transformedBody, sessionID)
 
+	responsesLite := codexResponsesLiteBody(transformedBody)
+
 	// The ChatGPT Codex backend rejects unsupported parameters and requires the allowlist
-	transformedBody = stripCodexUnsupportedTokenParams(transformedBody)
+	transformedBody = stripCodexUnsupportedTokenParams(transformedBody, responsesLite)
 	// Only now that the "(level)" suffix is gone can the catalog id be mapped
 	// to its wire id, so this has to follow the transform rather than precede it.
 	transformedBody = rewriteCodexUpstreamModel(transformedBody)
@@ -105,7 +107,7 @@ func ForwardCodex(w http.ResponseWriter, req *Request) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	resp, err := proxy.ForwardCodex(ctx, req.Client, cfg, req.APIKey, transformedBody, req.IsStream, req.ConnData, codexResponsesLiteBody(transformedBody), sessionID)
+	resp, err := proxy.ForwardCodex(ctx, req.Client, cfg, req.APIKey, transformedBody, req.IsStream, req.ConnData, responsesLite, sessionID)
 	if err != nil {
 		return fmt.Errorf("ForwardCodex: %w", err)
 	}

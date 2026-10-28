@@ -31,13 +31,13 @@ var codexResponsesAllowlist = map[string]bool{
 // from input. When store=false, the backend cannot look up stored server item IDs
 // (rs_, fc_, resp_, msg_) and fails or invalidates session state.
 // Port of stripStoredItemReferences from open-sse/executors/codex.js.
-func stripCodexStoredItemReferences(envelope map[string]any) bool {
+func stripCodexStoredItemReferences(envelope map[string]any, preserveLitePrefix bool) bool {
 	rawInput, ok := envelope["input"]
 	if !ok {
 		return false
 	}
-	slice, ok := rawInput.([]any)
-	if !ok {
+	slice, ok := responseInputItems(rawInput)
+	if !ok || len(slice) == 0 {
 		return false
 	}
 	filtered := make([]any, 0, len(slice))
@@ -55,7 +55,7 @@ func stripCodexStoredItemReferences(envelope map[string]any) bool {
 				continue
 			}
 			if id, ok := m["id"].(string); ok && codexServerIDPattern.MatchString(id) {
-				isDevMsg := m["role"] == "developer" && strings.HasPrefix(id, "msg_")
+				isDevMsg := preserveLitePrefix && m["role"] == "developer" && strings.HasPrefix(id, "msg_")
 				if !isDevMsg {
 					delete(m, "id")
 					changed = true
@@ -77,6 +77,9 @@ func stripCodexStoredItemReferences(envelope map[string]any) bool {
 //	if (body.reasoning && body.reasoning.effort && body.reasoning.effort !== 'none') {
 //	  body.include = ["reasoning.encrypted_content"];
 //	}
+//
+// We deliberately guard on envelope["include"] != nil so a client-supplied
+// include list (e.g. logprobs) is preserved rather than overwritten unconditionally.
 func injectCodexReasoningInclude(envelope map[string]any) bool {
 	if envelope["include"] != nil {
 		return false
@@ -96,12 +99,13 @@ func injectCodexReasoningInclude(envelope map[string]any) bool {
 // stripCodexUnsupportedTokenParams removes the parameters the ChatGPT Codex
 // OAuth backend rejects with 400 "Unsupported parameter: ...", strips stored
 // item references, injects reasoning include, and enforces the Responses API allowlist.
-func stripCodexUnsupportedTokenParams(body []byte) []byte {
+func stripCodexUnsupportedTokenParams(body []byte, responsesLite ...bool) []byte {
 	var envelope map[string]any
 	if err := json.Unmarshal(body, &envelope); err != nil {
 		return body
 	}
 
+	preserveLitePrefix := len(responsesLite) > 0 && responsesLite[0]
 	var changed bool
 	for _, key := range []string{
 		"temperature", "top_p", "frequency_penalty", "presence_penalty",
@@ -116,7 +120,7 @@ func stripCodexUnsupportedTokenParams(body []byte) []byte {
 		}
 	}
 	changed = normalizeCodexServiceTier(envelope) || changed
-	changed = stripCodexStoredItemReferences(envelope) || changed
+	changed = stripCodexStoredItemReferences(envelope, preserveLitePrefix) || changed
 	changed = injectCodexReasoningInclude(envelope) || changed
 
 	// Final allowlist filter (preserves internal _ flags like _compact)

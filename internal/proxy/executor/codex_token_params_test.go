@@ -333,3 +333,35 @@ func TestForwardCodex_StripsStoredItemReferences(t *testing.T) {
 		}
 	}
 }
+
+func TestStripCodexStoredItemReferences_PreserveLitePrefix(t *testing.T) {
+	raw := []byte(`{
+		"model": "gpt-6-sol",
+		"input": [
+			{"type": "message", "role": "developer", "id": "msg_dev1", "content": [{"type": "input_text", "text": "sys"}]},
+			{"type": "message", "role": "assistant", "id": "msg_ast1", "content": [{"type": "output_text", "text": "hi"}]}
+		]
+	}`)
+
+	// When responsesLite = true (lite model): msg_dev1 is preserved, msg_ast1 is stripped
+	liteBody := stripCodexUnsupportedTokenParams(raw, true)
+	liteParsed := decodeBody(t, liteBody)
+	liteInput := liteParsed["input"].([]any)
+	devItemLite := liteInput[0].(map[string]any)
+	if devItemLite["id"] != "msg_dev1" {
+		t.Errorf("expected msg_dev1 to be preserved on lite model, got %v", devItemLite["id"])
+	}
+	astItemLite := liteInput[1].(map[string]any)
+	if _, ok := astItemLite["id"]; ok {
+		t.Errorf("expected msg_ast1 to be stripped on lite model, got %v", astItemLite["id"])
+	}
+
+	// When responsesLite = false (classic model): msg_dev1 MUST be stripped
+	classicBody := stripCodexUnsupportedTokenParams(raw, false)
+	classicParsed := decodeBody(t, classicBody)
+	classicInput := classicParsed["input"].([]any)
+	devItemClassic := classicInput[0].(map[string]any)
+	if _, ok := devItemClassic["id"]; ok {
+		t.Errorf("expected msg_dev1 to be stripped on classic model, got %v", devItemClassic["id"])
+	}
+}
