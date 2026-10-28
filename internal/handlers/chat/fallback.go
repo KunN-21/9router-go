@@ -134,12 +134,34 @@ func (h *ChatHandler) handleAccountFallback(
 		return fmt.Errorf("no active connections for provider: %s", provider)
 	}
 
-	// Apply provider connection routing strategy (round-robin, sticky, random) if configured
+	// Apply provider connection routing strategy (round-robin, sticky, random) or session affinity
 	if len(allConns) > 1 && h.Repo != nil {
 		if settings, sErr := h.Repo.GetSettings(); sErr == nil && settings != nil {
 			strat := connRotationStrategy(settings, provider)
 			if strat.RotateStrategy != "" && strat.RotateStrategy != "none" {
-				allConns = h.applyConnectionStrategy(allConns, strat)
+				sessionID := handlerutil.GetSessionID(ctx)
+				hasAffinity := false
+				if sessionID != "" {
+					if boundID, ok := h.getSessionAffinity().Get(provider, model, sessionID); ok && boundID != "" {
+						for idx, c := range allConns {
+							if c != nil && c.ID == boundID {
+								if idx > 0 {
+									bound := allConns[idx]
+									copy(allConns[1:idx+1], allConns[0:idx])
+									allConns[0] = bound
+								}
+								hasAffinity = true
+								break
+							}
+						}
+						if !hasAffinity {
+							h.getSessionAffinity().Evict(provider, model, sessionID)
+						}
+					}
+				}
+				if !hasAffinity {
+					allConns = h.applyConnectionStrategy(allConns, strat)
+				}
 			}
 		}
 	}
@@ -193,8 +215,13 @@ func (h *ChatHandler) handleAccountFallback(
 			lastErr = err
 			observ.IncFallback(provider, model, observ.FallbackReasonUpstreamError)
 			RecordAttemptFromContext(ctx, connObj.ID, connObjName(connObj), provider, model, 0, err, time.Since(attemptStart).Milliseconds())
-			if sessionID := handlerutil.GetSessionID(ctx); sessionID != "" {
-				h.getSessionAffinity().Evict(provider, model, sessionID)
+			var ue *upstreamError
+			if errors.As(lastErr, &ue) {
+				if ue.StatusCode == http.StatusTooManyRequests || ue.StatusCode == http.StatusUnauthorized || ue.StatusCode == http.StatusForbidden {
+					if sessionID := handlerutil.GetSessionID(ctx); sessionID != "" {
+						h.getSessionAffinity().Evict(provider, model, sessionID)
+					}
+				}
 			}
 		}
 		// A node-state refusal (contract ended, lifetime quota spent) answers 403, which
@@ -276,6 +303,7 @@ func (h *ChatHandler) handleAccountFallback(
 				if lockErr := h.Repo.LockConnectionRateLimit(connObj.ID, until, classification.NewBackoffLevel, ue.StatusCode, errorText); lockErr != nil {
 					log.Warn("fallback", "rate limit lock failed", "conn", connObj.ID, "error", lockErr)
 				}
+				h.getSessionAffinity().EvictConnection(connObj.ID)
 			}
 			log.Warn("fallback", "connection locked", append([]any{
 				"conn", connObj.ID, "provider", provider, "model", model,

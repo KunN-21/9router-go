@@ -10,7 +10,7 @@ import (
 // connection accounts. This preserves prompt caching across multi-turn conversations
 // while balancing multiple distinct sessions across available accounts.
 type SessionAffinityStore struct {
-	mu         sync.RWMutex
+	mu         sync.Mutex
 	entries    map[string]*sessionBinding
 	maxEntries int
 	ttl        time.Duration

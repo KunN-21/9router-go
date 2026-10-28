@@ -656,6 +656,8 @@ func (h *ChatHandler) getSessionAffinity() *SessionAffinityStore {
 	if h == nil {
 		return nil
 	}
+	h.sessionAffinityMu.Lock()
+	defer h.sessionAffinityMu.Unlock()
 	if h.SessionAffinity == nil {
 		h.SessionAffinity = NewSessionAffinityStore(10000, 2*time.Hour)
 	}

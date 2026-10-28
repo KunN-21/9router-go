@@ -61,7 +61,8 @@ type ChatHandler struct {
 	timeoutBenchMu sync.Mutex
 	timeoutBench   map[string]time.Time
 	// SessionAffinity pins client sessions to upstream connection accounts.
-	SessionAffinity *SessionAffinityStore
+	sessionAffinityMu sync.Mutex
+	SessionAffinity   *SessionAffinityStore
 }
 
 // Type aliases for shared types
