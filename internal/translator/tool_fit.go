@@ -51,7 +51,7 @@ func FitToolNames(body []byte) ([]byte, map[string]string) {
 		return body, nil
 	}
 
-	newBody, err := json.Marshal(req)
+	newBody, err := json.Marshal(req, json.Deterministic(true))
 	if err != nil {
 		return body, nil
 	}
