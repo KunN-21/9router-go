@@ -187,6 +187,9 @@ var SessionHeaderKeys = []string{
 	"session-id",
 	"session_id",
 	"x-amp-thread-id",
+	"x-opencode-session",
+	"x-opencode-session-id",
+	"x-session-affinity",
 }
 
 // ExtractSessionID extracts the session identifier from incoming HTTP request headers.
