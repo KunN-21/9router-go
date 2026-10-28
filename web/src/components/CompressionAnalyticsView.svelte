@@ -394,7 +394,7 @@
           >
             <!-- Tooltip: positioned at top-2 inside 112px headroom so it NEVER clips -->
             <div class="absolute top-2 {alignClass} hidden group-hover:flex flex-col items-center z-30 pointer-events-none">
-              <div class="rounded-lg bg-surface-3 border border-border p-2.5 text-[11px] shadow-xl whitespace-nowrap text-text-main backdrop-blur-sm">
+              <div class="rounded-lg bg-surface-3 border border-border p-2.5 text-[11px] shadow-xl whitespace-nowrap text-text-main">
                 <div class="font-semibold text-text-muted border-b border-border/50 pb-1 mb-1">{b.hour.replace('T', ' ').replace(':00:00Z', ':00')}</div>
                 <div class="flex items-center justify-between gap-4">
                   <span>Runs:</span> <span class="font-mono font-bold text-text-main">{b.count}</span>
