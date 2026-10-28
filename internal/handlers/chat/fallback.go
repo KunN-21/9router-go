@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"9router/proxy/internal/db"
 	"9router/proxy/internal/handlerutil"
 	"9router/proxy/internal/headroom"
 	"9router/proxy/internal/log"
@@ -134,35 +135,43 @@ func (h *ChatHandler) handleAccountFallback(
 		return fmt.Errorf("no active connections for provider: %s", provider)
 	}
 
-	// Apply provider connection routing strategy (round-robin, sticky, random) or session affinity
-	if len(allConns) > 1 && h.Repo != nil {
+	var strat db.ProviderStrategy
+	affinityEligible := false
+	if h.Repo != nil {
 		if settings, sErr := h.Repo.GetSettings(); sErr == nil && settings != nil {
-			strat := connRotationStrategy(settings, provider)
-			if strat.RotateStrategy != "" && strat.RotateStrategy != "none" {
-				sessionID := handlerutil.GetSessionID(ctx)
-				hasAffinity := false
-				if sessionID != "" {
-					if boundID, ok := h.getSessionAffinity().Get(provider, model, sessionID); ok && boundID != "" {
-						for idx, c := range allConns {
-							if c != nil && c.ID == boundID {
-								if idx > 0 {
-									bound := allConns[idx]
-									copy(allConns[1:idx+1], allConns[0:idx])
-									allConns[0] = bound
-								}
-								hasAffinity = true
-								break
-							}
+			strat = connRotationStrategy(settings, provider)
+			affinityEligible = isAffinityEligibleStrategy(strat.RotateStrategy)
+		}
+	}
+
+	// Apply provider connection routing strategy (round-robin, sticky, random) or session affinity
+	if len(allConns) > 1 && strat.RotateStrategy != "" && strat.RotateStrategy != "none" {
+		sessionID := handlerutil.GetSessionID(ctx)
+		hasAffinity := false
+		if sessionID != "" && affinityEligible {
+			if boundID, ok := h.getSessionAffinity().Get(provider, model, sessionID); ok && boundID != "" {
+				for idx, c := range allConns {
+					if c != nil && c.ID == boundID {
+						if idx > 0 {
+							bound := allConns[idx]
+							copy(allConns[1:idx+1], allConns[0:idx])
+							allConns[0] = bound
 						}
-						if !hasAffinity {
-							h.getSessionAffinity().Evict(provider, model, sessionID)
-						}
+						hasAffinity = true
+						break
 					}
 				}
 				if !hasAffinity {
-					allConns = h.applyConnectionStrategy(allConns, strat)
+					h.getSessionAffinity().Evict(provider, model, sessionID)
 				}
 			}
+		}
+		if !hasAffinity {
+			effectiveStrat := strat
+			if sessionID != "" && affinityEligible {
+				effectiveStrat.StickyLimit = 1
+			}
+			allConns = h.applyConnectionStrategy(allConns, effectiveStrat)
 		}
 	}
 
@@ -207,7 +216,7 @@ func (h *ChatHandler) handleAccountFallback(
 			IsStream: isStream, TranslateResponse: translateResponse, Endpoint: endpoint,
 		}); err == nil {
 			RecordAttemptFromContext(ctx, connObj.ID, connObjName(connObj), provider, model, 200, nil, time.Since(attemptStart).Milliseconds())
-			if sessionID := handlerutil.GetSessionID(ctx); sessionID != "" {
+			if sessionID := handlerutil.GetSessionID(ctx); sessionID != "" && affinityEligible {
 				h.getSessionAffinity().Bind(provider, model, sessionID, connObj.ID)
 			}
 			return nil

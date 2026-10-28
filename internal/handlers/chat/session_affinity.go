@@ -1,6 +1,8 @@
 package chat
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"strings"
 	"sync"
 	"time"
@@ -40,8 +42,20 @@ func NewSessionAffinityStore(maxEntries int, ttl time.Duration) *SessionAffinity
 	}
 }
 
+func hasModelToken(m, token string) bool {
+	for _, part := range strings.FieldsFunc(m, func(r rune) bool {
+		return r == '-' || r == '_' || r == '.' || r == '/' || r == ':'
+	}) {
+		if part == token {
+			return true
+		}
+	}
+	return false
+}
+
 // normalizeModelFamily groups models into families so multi-model sessions (e.g., Sonnet vs Haiku)
 // do not cause eviction thrashing when accounts have different model capabilities.
+// Uses token-boundary matching so substrings like "gemini" do not falsely match "mini".
 func normalizeModelFamily(model string) string {
 	m := strings.ToLower(strings.TrimSpace(model))
 	if idx := strings.Index(m, "/"); idx >= 0 {
@@ -50,23 +64,52 @@ func normalizeModelFamily(model string) string {
 	if m == "" {
 		return "default"
 	}
-	if strings.Contains(m, "haiku") {
+	if hasModelToken(m, "haiku") {
 		return "haiku"
 	}
-	if strings.Contains(m, "mini") || strings.Contains(m, "flash") {
-		return "mini"
-	}
-	if strings.Contains(m, "opus") {
+	if hasModelToken(m, "opus") {
 		return "opus"
 	}
-	if strings.Contains(m, "sonnet") {
+	if hasModelToken(m, "sonnet") {
 		return "sonnet"
+	}
+	if hasModelToken(m, "flash") {
+		return "flash"
+	}
+	if hasModelToken(m, "pro") {
+		return "pro"
+	}
+	if hasModelToken(m, "mini") {
+		return "mini"
 	}
 	return m
 }
 
+// hashSessionID truncates and hashes client-supplied session identifiers to bound
+// map key memory on constrained environments (such as 1-vCPU targets).
+func hashSessionID(sessionID string) string {
+	s := strings.TrimSpace(sessionID)
+	if len(s) > 64 {
+		h := sha256.Sum256([]byte(s))
+		return hex.EncodeToString(h[:])
+	}
+	return s
+}
+
+// isAffinityEligibleStrategy reports whether a rotation strategy participates in session affinity.
+// Session affinity is designed for multi-account load balancing ("round-robin" and "sticky").
+// "random" is explicitly excluded so callers desiring per-request randomness do not get pinned.
+func isAffinityEligibleStrategy(strategy string) bool {
+	switch strings.ToLower(strings.TrimSpace(strategy)) {
+	case "round-robin", "roundrobin", "sticky":
+		return true
+	default:
+		return false
+	}
+}
+
 func affinityKey(provider, model, sessionID string) string {
-	return strings.ToLower(strings.TrimSpace(provider)) + ":" + normalizeModelFamily(model) + ":" + strings.TrimSpace(sessionID)
+	return strings.ToLower(strings.TrimSpace(provider)) + ":" + normalizeModelFamily(model) + ":" + hashSessionID(sessionID)
 }
 
 // Get returns the pinned connection ID for the given provider, model, and session ID if still active.
@@ -133,7 +176,7 @@ func (s *SessionAffinityStore) Bind(provider, model, sessionID, connectionID str
 		key:          key,
 		provider:     provider,
 		modelFamily:  normalizeModelFamily(model),
-		sessionID:    sessionID,
+		sessionID:    hashSessionID(sessionID),
 		connectionID: connectionID,
 		lastSeenAt:   now,
 	}

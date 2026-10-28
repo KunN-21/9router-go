@@ -76,3 +76,71 @@ func TestSessionAffinityStore_TTLExpirationAndCapacity(t *testing.T) {
 		t.Error("s3 should expire after TTL")
 	}
 }
+
+func TestNormalizeModelFamily(t *testing.T) {
+	cases := []struct {
+		model string
+		want  string
+	}{
+		{"gemini-2.5-pro", "pro"},
+		{"gemini-2.5-flash", "flash"},
+		{"gemini-3-pro-preview", "pro"},
+		{"google/gemini-1.5-flash-latest", "flash"},
+		{"claude-3-5-sonnet-20241022", "sonnet"},
+		{"anthropic/claude-3-5-haiku", "haiku"},
+		{"claude-3-opus", "opus"},
+		{"gpt-4o-mini", "mini"},
+		{"o3-mini", "mini"},
+		{"gpt-4o", "gpt-4o"},
+		{"deepseek-reasoner", "deepseek-reasoner"},
+		{"", "default"},
+	}
+
+	for _, tc := range cases {
+		got := normalizeModelFamily(tc.model)
+		if got != tc.want {
+			t.Errorf("normalizeModelFamily(%q) = %q, want %q", tc.model, got, tc.want)
+		}
+	}
+}
+
+func TestHashSessionID_BoundedKey(t *testing.T) {
+	shortID := "sess-normal-123"
+	if hashSessionID(shortID) != shortID {
+		t.Errorf("short session id should be kept verbatim, got %q", hashSessionID(shortID))
+	}
+
+	// 1000-char session ID must be truncated/hashed to bounded length (64 hex chars)
+	longID := "sess-"
+	for len(longID) < 1000 {
+		longID += "abcdefghijklmnopqrstuvwxyz0123456789"
+	}
+	hashed := hashSessionID(longID)
+	if len(hashed) != 64 {
+		t.Errorf("long session id hash length = %d, want 64", len(hashed))
+	}
+
+	// affinityKey with long session ID must remain bounded
+	key := affinityKey("codex", "gpt-4o", longID)
+	if len(key) > 120 {
+		t.Errorf("affinityKey length = %d too long, want <= 120", len(key))
+	}
+}
+
+func TestIsAffinityEligibleStrategy(t *testing.T) {
+	if !isAffinityEligibleStrategy("round-robin") {
+		t.Error("round-robin should be eligible")
+	}
+	if !isAffinityEligibleStrategy("sticky") {
+		t.Error("sticky should be eligible")
+	}
+	if isAffinityEligibleStrategy("random") {
+		t.Error("random should NOT be eligible (must preserve per-request randomness)")
+	}
+	if isAffinityEligibleStrategy("none") {
+		t.Error("none should NOT be eligible")
+	}
+	if isAffinityEligibleStrategy("") {
+		t.Error("empty strategy should NOT be eligible")
+	}
+}

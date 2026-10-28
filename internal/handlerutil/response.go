@@ -7,6 +7,7 @@ import (
 	json "encoding/json/v2"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"9router/proxy/internal/constants"
 )
@@ -198,7 +199,10 @@ func ExtractSessionID(r *http.Request) string {
 		return ""
 	}
 	for _, key := range SessionHeaderKeys {
-		if val := r.Header.Get(key); val != "" {
+		if val := strings.TrimSpace(r.Header.Get(key)); val != "" {
+			if len(val) > 256 {
+				return val[:256]
+			}
 			return val
 		}
 	}

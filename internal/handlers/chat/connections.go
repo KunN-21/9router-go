@@ -364,13 +364,15 @@ func (h *ChatHandler) getBestConnectionWithContext(ctx context.Context, provider
 
 		var strat db.ProviderStrategy
 		hasStrat := false
+		affinityEligible := false
 		if settingsErr == nil && settings != nil {
 			strat = connRotationStrategy(settings, provider)
 			hasStrat = strat.RotateStrategy != "" && strat.RotateStrategy != "none"
+			affinityEligible = isAffinityEligibleStrategy(strat.RotateStrategy)
 		}
 
 		// Check session affinity if rotation is configured and a session is identified
-		if !isProbe && sessionID != "" && hasStrat {
+		if !isProbe && sessionID != "" && affinityEligible {
 			if boundID, ok := h.getSessionAffinity().Get(provider, model, sessionID); ok && boundID != "" {
 				var boundConn *models.ProviderConnection
 				for _, c := range connections {
@@ -396,8 +398,14 @@ func (h *ChatHandler) getBestConnectionWithContext(ctx context.Context, provider
 
 		if conn == nil {
 			// Rotate only connections eligible for the requested model.
+			// New session distribution uses round-robin with effective stickyLimit = 1 across
+			// candidate accounts so distinct sessions alternate evenly.
 			if len(connections) > 1 && hasStrat {
-				connections = h.applyConnectionStrategy(connections, strat)
+				effectiveStrat := strat
+				if sessionID != "" && affinityEligible {
+					effectiveStrat.StickyLimit = 1
+				}
+				connections = h.applyConnectionStrategy(connections, effectiveStrat)
 			}
 
 			for _, c := range connections {
@@ -449,7 +457,7 @@ func (h *ChatHandler) getBestConnectionWithContext(ctx context.Context, provider
 		}
 
 		// Optimistically bind session to the selected connection
-		if conn != nil && !isProbe && sessionID != "" && hasStrat {
+		if conn != nil && !isProbe && sessionID != "" && affinityEligible {
 			h.getSessionAffinity().Bind(provider, model, sessionID, conn.ID)
 		}
 		if conn == nil {

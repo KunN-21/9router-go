@@ -25,7 +25,7 @@ func TestSessionAffinity_MultiTerminalSimulation(t *testing.T) {
 			requestCounts[connID].Add(1)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(fmt.Sprintf(`{"id":"chatcmpl-%s","choices":[{"message":{"role":"assistant","content":"resp"}}]`, connID)))
+			fmt.Fprintf(w, `{"id":"chatcmpl-%s","choices":[{"message":{"role":"assistant","content":"resp"}}]}`, connID)
 		}))
 	}
 
