@@ -382,29 +382,15 @@
         No compression activity recorded in the {periodLabel(since).toLowerCase()}.
       </div>
     {:else}
-      <div class="h-64 w-full flex items-end gap-1.5 pt-28 pb-1 overflow-x-auto">
-        {#each stats.trend as b, idx}
+      <div class="h-48 w-full flex items-end gap-1.5 pt-4 pb-1 overflow-x-auto">
+        {#each stats.trend as b}
           {@const heightPct = Math.max(8, Math.round((b.tokensSaved / maxTrendTokens) * 100))}
           {@const isHovered = hoveredTrendHour === b}
-          {@const alignClass = idx < 2 ? 'left-0 translate-x-0' : idx > stats.trend.length - 3 ? 'right-0 translate-x-0' : 'left-1/2 -translate-x-1/2'}
           <div
             class="flex-1 min-w-[22px] h-full flex flex-col justify-end items-center group relative cursor-pointer"
             onmouseenter={() => (hoveredTrendHour = b)}
             onmouseleave={() => (hoveredTrendHour = null)}
           >
-            <!-- Tooltip: positioned at top-2 inside 112px headroom so it NEVER clips -->
-            <div class="absolute top-2 {alignClass} hidden group-hover:flex flex-col items-center z-30 pointer-events-none">
-              <div class="rounded-lg bg-surface-3 border border-border p-2.5 text-[11px] shadow-xl whitespace-nowrap text-text-main">
-                <div class="font-semibold text-text-muted border-b border-border/50 pb-1 mb-1">{b.hour.replace('T', ' ').replace(':00:00Z', ':00')}</div>
-                <div class="flex items-center justify-between gap-4">
-                  <span>Runs:</span> <span class="font-mono font-bold text-text-main">{b.count}</span>
-                </div>
-                <div class="flex items-center justify-between gap-4 text-emerald-500">
-                  <span>Tokens Saved:</span> <span class="font-mono font-bold">{b.tokensSaved.toLocaleString()}</span>
-                </div>
-              </div>
-            </div>
-
             <!-- Bar -->
             <div
               class="w-full rounded-t transition-all duration-200 bg-emerald-500 hover:bg-emerald-400 {isHovered ? 'ring-2 ring-brand-500 shadow-md brightness-110' : ''}"
