@@ -319,4 +319,3 @@ func TestSanitizeOpenAIToolsIsDeterministic(t *testing.T) {
 		}
 	}
 }
-
