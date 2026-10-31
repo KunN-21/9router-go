@@ -140,4 +140,3 @@ func TestSafeToolCallInput_AlwaysValid(t *testing.T) {
 		}
 	}
 }
-
