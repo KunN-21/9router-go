@@ -5,3 +5,4 @@
 - **Provider Alias Shadowing Guard**: Ensured connection names cannot shadow real provider aliases (e.g. connection named `deepseek`).
 - **Scoped Mistral Badges**: Limited `VIBE CODE` and `API PAYG` badge display in `ProviderDetailView` strictly to Mistral.
 - **Catalog Cleanup**: Pruned retired Mistral models (`zai-glm-5-2`, `devstral-2512`, `labs-devstral-small-2512`).
+- **Claude Thinking Display Sanitization**: Clamped experimental client `thinking.display` values (e.g. `updates`, `highlights`) to `summarized` (or `omitted`), preventing Anthropic 400 rejection `thinking.adaptive.display: Input should be 'summarized', 'omitted'`.

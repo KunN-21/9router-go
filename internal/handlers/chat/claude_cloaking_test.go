@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"9router/proxy/internal/providers"
+	"9router/proxy/internal/proxy/executor"
 )
 
 func TestIsAnthropicUpstream(t *testing.T) {
@@ -406,5 +407,18 @@ func TestAdoptRequiredClaudeCodeVersion(t *testing.T) {
 	}
 	if got := ClaudeCLIVersion(); got != "2.1.300" {
 		t.Errorf("version downgraded: %q", got)
+	}
+}
+
+func TestSanitizeClaudeThinkingBody_AdaptiveUpdatesClamped(t *testing.T) {
+	body := []byte(`{"model":"claude-opus-5-5","thinking":{"type":"adaptive","display":"updates"},"messages":[{"role":"user","content":"hi"}]}`)
+	out := executor.SanitizeClaudeThinkingBody(body)
+	var m map[string]any
+	if err := json.Unmarshal(out, &m); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	th, _ := m["thinking"].(map[string]any)
+	if th["display"] != "summarized" {
+		t.Fatalf("thinking.display = %v, want summarized", th["display"])
 	}
 }

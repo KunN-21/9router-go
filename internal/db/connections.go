@@ -177,7 +177,8 @@ func (r *Repo) ResolveConnectionRoutingByPrefix(prefix string) (provider string,
 	normPrefix := strings.ToLower(strings.ReplaceAll(prefix, " ", "-"))
 	var p, id string
 	// 1. Direct ID lookup
-	err := r.db.QueryRow(
+	err := r.db.QueryRowContext(
+		context.Background(),
 		`SELECT provider, id FROM providerConnections WHERE id = ? AND isActive = 1 LIMIT 1`,
 		prefix,
 	).Scan(&p, &id)
@@ -185,7 +186,8 @@ func (r *Repo) ResolveConnectionRoutingByPrefix(prefix string) (provider string,
 		return p, id, true
 	}
 	// 2. Name lookup (case-insensitive, exact or space-to-dash normalized)
-	err = r.db.QueryRow(
+	err = r.db.QueryRowContext(
+		context.Background(),
 		`SELECT provider, id FROM providerConnections
 		 WHERE isActive = 1 AND (name = ? COLLATE NOCASE OR replace(name, ' ', '-') = ? COLLATE NOCASE)
 		 LIMIT 1`,

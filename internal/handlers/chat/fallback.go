@@ -751,6 +751,10 @@ func (h *ChatHandler) tryForwardWithConnection(f forwardRequestParams) error {
 		}
 	}
 
+	if isAnthropic || upstreamClaude {
+		pipedBody = executor.SanitizeClaudeThinkingBody(pipedBody)
+	}
+
 	// A body that asked for thinking summaries must not also carry the
 	// redact-thinking beta: it asks Anthropic for signature-only thinking blocks
 	// and would blank exactly what the client requested. The header map is
