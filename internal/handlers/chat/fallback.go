@@ -748,6 +748,7 @@ func (h *ChatHandler) tryForwardWithConnection(f forwardRequestParams) error {
 					pipedBody = out
 				}
 			}
+			pipedBody = translator.AnchorClaudeCache(pipedBody)
 		}
 	}
 

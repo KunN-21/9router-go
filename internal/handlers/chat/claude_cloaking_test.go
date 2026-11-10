@@ -127,6 +127,25 @@ func TestApplyClaudeCloaking(t *testing.T) {
 	}
 }
 
+func TestApplyClaudeCloaking_StableAcrossTurnsForPromptCaching(t *testing.T) {
+	turn1Body := []byte(`{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":"turn 1"}]}`)
+	turn2Body := []byte(`{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":"turn 1"},{"role":"assistant","content":"reply 1"},{"role":"user","content":"turn 2"}]}`)
+
+	out1 := applyClaudeCloaking(turn1Body, "sk-ant-oat-token", "sess-fixed-123")
+	out2 := applyClaudeCloaking(turn2Body, "sk-ant-oat-token", "sess-fixed-123")
+
+	var m1, m2 map[string]any
+	_ = json.Unmarshal(out1, &m1)
+	_ = json.Unmarshal(out2, &m2)
+
+	sys1 := m1["system"].([]any)[0].(map[string]any)["text"].(string)
+	sys2 := m2["system"].([]any)[0].(map[string]any)["text"].(string)
+
+	if sys1 != sys2 {
+		t.Fatalf("billing header mutated across turns, breaking prompt cache:\nTurn 1: %s\nTurn 2: %s", sys1, sys2)
+	}
+}
+
 func TestStandardKey_SkipsToolCloakingAndDecoys(t *testing.T) {
 	body := []byte(`{
 		"model": "claude-3-opus-20240229",
