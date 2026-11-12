@@ -1,5 +1,33 @@
 # Changelog
 
+## [v1.9.16] - 2026-11-12
+
+### Highlights
+
+Stable release graduating the v1.9.16 release cycle, bringing comprehensive improvements across model publishing, quota tracking, token saver fidelity, translator robustness, and provider resilience:
+
+- **Model Publishing & Prefix Matching**: Fix unpublishing on model deletion by persisting deleted models to `disabledModels` and clearing the live catalog cache. Enforce pinned `enabledModels` allowlists against custom models/aliases. Support bidirectional prefix matching in `disabledModels` and normalize STT/embedding model kinds (e.g. Parakeet CTC and NV-EmbedQA) to prevent non-LLMs from being advertised as LLMs (#1100).
+- **Token Saver Modernization**: Align Caveman doctrine with upstream v4.1.0 (ASD-STE100 guidelines), Ponytail with v5.3.3 (all 3 levels), Headroom session isolation with upstream v0.44.0, and extend RTK filters for path handling (#1115).
+- **Translator & Upstream Parity**: Extract DeepSeek DSML XML tool calls into native `tool_calls` (#1108), sanitize foreign tool IDs for Anthropic Messages (#1114), and normalize adaptive/auto thinking intents on OpenAI-compatible transports (#1106).
+- **Quota Tracking & Providers**: Add auto-ping for Command Code Provider API (`commandcode-goat`) (#1113), group Quota Tracker rows by provider with per-account model scope (#1103), and update Kiro IDE client fingerprint to pass AWS version gates (#1117).
+- **Pool Resilience & Routing**: Revert intrusive inband ad-gate and protective pause behaviors to keep pool and account fallback intact across provider combos (#1116, #1118).
+
+## [v1.9.16-exp.15] - 2026-11-12
+
+### fix(antigravity): revert global protective pause to restore account fallback in combos
+
+- Revert PR #1093 / #1094: Remove the 6-hour pool-wide `ProtectivePause` on Antigravity `TOS_VIOLATION`. The speculative pause broke normal account rotation in combos, skipping all Antigravity accounts when any single account encountered a TOS refusal instead of falling back to healthy sibling accounts.
+
+### Fixes
+
+- **Kiro: update client identity to Kiro IDE fingerprint to pass AWS version gate**: Since 2026-11-09, AWS CodeWhisperer and Amazon Q endpoints reject older client identities (`kiro-ide/1.0.0`) with `400/403 This version of Kiro is no longer supported` (kirodotdev/Kiro#11335). Update `User-Agent` and `X-Amz-User-Agent` to the modern Kiro IDE fingerprint (`KiroIDE-1.4.121-<machineId>`) and only send `X-Amz-Target` to `codewhisperer.*` endpoints per upstream specification. Also ensure effective profile ARN defaults (e.g. Builder ID / social) are injected into `x-amzn-codewhisperer-profile-arn`.
+
+### fix(regression): revert free-pi inband ad gate and antigravity session headers
+
+- Revert PR #1089 (commit `6a49bc16`): Remove `X-Goog-User-Project`, `X-Machine-Session-Id`, `X-Client-Name`, and `X-Client-Version` header injection from `ForwardGemini`. Antigravity consumer/onboarding projects do not have the Cloud AI Companion API enabled for Google Cloud project billing, causing Google Cloud Code Assist WAF to reject calls with HTTP 403 `PERMISSION_DENIED` / `SERVICE_DISABLED`.
+- Revert PR #1104 (commit `b5f058fc`): Remove `freePiInbandGateError` from `ForwardFreePi`. Upstream free-pi ad-gate wording was converted into a hard HTTP 403 `free_pi_ad_gate` error, terminating client connections (such as CLI and IDE agents) that do not trigger browser impressions.
+- Revert PR #1085 (commit `82eb07c2`): Clean up unit tests associated with prompt rewrites.
+
 ## [v1.9.16-exp.14] - 2026-11-12
 
 ### feat(tokensaver): sync doctrine and protocol with upstream token savers
