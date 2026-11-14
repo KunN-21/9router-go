@@ -423,12 +423,10 @@ func (h *DashboardHandler) probeHTTPClient(data connectionProbeData, raw map[str
 		return newProbeRelayClient(proxyURLStr, probeUpstreamURL(data, raw)), ""
 	}
 
-	parsed, err := url.Parse(proxyURLStr)
-	if err != nil {
+	if _, err := url.Parse(proxyURLStr); err != nil {
 		return nil, ""
 	}
-	tr := proxy.NewSafeTransport()
-	tr.Proxy = http.ProxyURL(parsed)
+	tr := proxy.NewSafeTransportForProxy(proxyURLStr)
 	return &http.Client{
 		Transport: tr,
 		Timeout:   connectionProbeTimeout,
@@ -456,15 +454,13 @@ func probeUpstreamURL(data connectionProbeData, raw map[string]any) string {
 // probeProxyURL pre-checks a proxy before probing through it (upstream runs
 // testProxyUrl and marks the connection broken when the proxy itself is down).
 func probeProxyURL(ctx context.Context, proxyURLStr string) error {
-	parsed, err := url.Parse(proxyURLStr)
-	if err != nil {
+	if _, err := url.Parse(proxyURLStr); err != nil {
 		return fmt.Errorf("invalid proxy URL format")
 	}
 	ctx, cancel := context.WithTimeout(ctx, connectionProxyProbeTimeout)
 	defer cancel()
 
-	tr := proxy.NewSafeTransport()
-	tr.Proxy = http.ProxyURL(parsed)
+	tr := proxy.NewSafeTransportForProxy(proxyURLStr)
 	client := &http.Client{
 		Transport: tr,
 		Timeout:   connectionProxyProbeTimeout,
@@ -791,7 +787,7 @@ func (h *DashboardHandler) probeFreebuff(ctx context.Context, conn *models.Provi
 		return probeOutcome{message: fmt.Sprintf("create probe request failed: %v", err)}
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("User-Agent", "codebuff-cli/0.0.138")
+	req.Header.Set("User-Agent", "Freebuff-CLI/0.2.36")
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := executor.DoFreebuffHTTP(ctx, client, req)

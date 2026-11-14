@@ -85,13 +85,26 @@ func IsPrivateIP(ip net.IP) bool {
 }
 
 // IsPrivateNetworkingAllowed reports whether connections to private/local IPs
-// are globally permitted via ALLOW_PRIVATE_NETWORKING=true/1.
+// are globally permitted via ALLOW_PRIVATE_NETWORKING.
+//
+// It defaults to TRUE: a gateway is normally run by an operator who controls
+// its upstreams, and self-hosted/LAN providers (ollama on loopback, a second
+// gateway on the LAN, a Tailscale peer) are a normal deployment rather than an
+// anomaly. Set ALLOW_PRIVATE_NETWORKING=false to restore the strict default,
+// which refuses private/reserved targets unless a request carries the
+// per-connection opt-in (WithAllowPrivateNetworking).
 func IsPrivateNetworkingAllowed() bool {
-	v := strings.TrimSpace(os.Getenv("ALLOW_PRIVATE_NETWORKING"))
-	if b, err := strconv.ParseBool(v); err == nil {
-		return b
+	v, ok := os.LookupEnv("ALLOW_PRIVATE_NETWORKING")
+	if !ok {
+		return true
 	}
-	return false
+	b, err := strconv.ParseBool(strings.TrimSpace(v))
+	if err != nil {
+		// An unparseable value is a configuration error; fail closed rather
+		// than silently re-enabling private dials.
+		return false
+	}
+	return b
 }
 
 // NewSafeDialer returns a *net.Dialer equipped with an active socket ControlContext
@@ -399,11 +412,35 @@ func newSafeDialerForProxy(allow *proxyAllowlist) *net.Dialer {
 }
 
 // NewSafeTransport returns an *http.Transport configured with production pool
-// defaults and an active SSRF-filtering DialContext. t.Proxy is left nil so the
-// stdlib applies http.ProxyFromEnvironment, and the dialer permits whatever
-// endpoint that environment names.
+// defaults and an active SSRF-filtering DialContext. t.Proxy is
+// http.ProxyFromEnvironment so the operator's ambient egress (HTTP_PROXY /
+// HTTPS_PROXY / ALL_PROXY, including the values syncEnvFromViper lifts from
+// .env) applies, and the dialer permits whatever endpoint that environment
+// names. The stdlib does NOT consult the environment on its own: a *http.Transport
+// with Proxy nil dials direct, so leaving the field nil silently ignored the
+// operator's proxy (verified 2026-11-13: gateway with ALL_PROXY in .env egressed
+// direct on poolless connections).
 func NewSafeTransport() *http.Transport {
-	return NewSafeTransportForProxy("")
+	t := NewSafeTransportForProxy("")
+	t.Proxy = proxyFromEnvironment
+	return t
+}
+
+// NewDirectSafeTransport is NewSafeTransport with the proxy disabled: it dials
+// the target from the host's own address even when the environment names a
+// proxy. Only callers whose PURPOSE is escaping an ambient proxy —
+// FallbackTransport's direct leg and replayDirect — may use it; everything else
+// goes through NewSafeTransport so the operator's egress path is honoured.
+//
+// Deliberately built WITHOUT touching ambientProxyAllowlist: package-init
+// callers (directProxyClient) would otherwise fire http.ProxyFromEnvironment's
+// once-cache before main() ran viper's .env sync, freezing an empty ambient
+// view for the whole process. A transport that never proxies needs no proxy
+// endpoint allowlist, so the plain safe dialer is exact here.
+func NewDirectSafeTransport() *http.Transport {
+	t := constants.DefaultHTTPTransportConfig.NewTransport()
+	t.DialContext = newSafeDialerForProxy(nil).DialContext
+	return t
 }
 
 // NewSafeTransportForProxy returns NewSafeTransport's transport for a caller
