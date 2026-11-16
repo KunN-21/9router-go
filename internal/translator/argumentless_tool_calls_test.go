@@ -121,3 +121,18 @@ func TestSanitizeClaudePassthrough_DropsArgumentlessToolUse(t *testing.T) {
 		t.Error("orphaned tool_result should have been dropped with its call")
 	}
 }
+
+// An inline-tools block is content: a turn holding only a tool_addition must not
+// read as empty and disappear from the history.
+func TestSanitizeClaudePassthrough_KeepsToolAdditionTurn(t *testing.T) {
+	body := []byte(`{"model":"m","max_tokens":16,"messages":[
+		{"role":"user","content":"one"},
+		{"role":"assistant","content":[{"type":"tool_addition","tool":{"type":"tool_definition","name":"zz","input_schema":{"type":"object","properties":{}}}}]},
+		{"role":"user","content":"two"}
+	]}`)
+
+	out := SanitizeClaudePassthrough(body, false)
+	if !strings.Contains(string(out), "tool_addition") {
+		t.Fatalf("the tool_addition turn must survive, got %s", out)
+	}
+}
