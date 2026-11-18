@@ -199,6 +199,8 @@ func SetupRoutes(r interface {
 	r.Get("/api/usage/request-details", HandleRequestDetails(repo))
 	r.Get("/api/usage/export", HandleUsageExport(repo))
 	r.Get("/api/usage/request-details/{id}", HandleRequestDetail(repo))
+	// Qoder daily-credit check-in state (read-only).
+	r.Get("/api/qoder/checkins", dashH.HandleGetQoderCheckins)
 	r.Get("/api/usage/providers", dashH.HandleGetUsageProviders)
 	// Usage per client API key. Registered before the {connectionId} route:
 	// chi matches in order, so a route added after it would be read as a
@@ -316,6 +318,7 @@ func SetupDashboardRoutes(r chi.Router, repo *db.Repo, chatH *chat.ChatHandler) 
 	r.Delete("/api/cache", dashH.HandleDeleteCache)
 	r.Get("/api/cache/entries", dashH.HandleGetCacheEntries)
 	r.Delete("/api/cache/entries", dashH.HandleDeleteCacheEntry)
+	r.Post("/api/cache/semantic/invalidate", dashH.HandleInvalidateSemanticCache)
 
 	// Compression Analytics
 	r.Get("/api/analytics/compression", dashH.HandleGetCompressionAnalytics)

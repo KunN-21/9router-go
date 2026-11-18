@@ -241,6 +241,8 @@ func RegisterRoutes(r chi.Router, h *DashboardHandler) {
 		r.Get("/tunnel/tailscale-check", h.HandleTailscaleCheck)
 		r.Post("/tunnel/tailscale-enable", h.HandleTailscaleEnable)
 		r.Post("/tunnel/tailscale-disable", h.HandleTailscaleDisable)
+		// Qoder daily-credit check-in state (read-only).
+		r.Get("/qoder/checkins", h.HandleGetQoderCheckins)
 		// Usage & Quotas
 		r.Get("/usage/providers", h.HandleGetUsageProviders)
 		// Usage per client API key. Registered before the {connectionId}
@@ -269,6 +271,7 @@ func RegisterRoutes(r chi.Router, h *DashboardHandler) {
 		r.Delete("/cache", h.HandleDeleteCache)
 		r.Get("/cache/entries", h.HandleGetCacheEntries)
 		r.Delete("/cache/entries", h.HandleDeleteCacheEntry)
+		r.Post("/cache/semantic/invalidate", h.HandleInvalidateSemanticCache)
 
 		// Compression Analytics
 		r.Get("/analytics/compression", h.HandleGetCompressionAnalytics)
