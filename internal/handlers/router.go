@@ -287,6 +287,12 @@ func SetupDashboardRoutes(r chi.Router, repo *db.Repo, chatH *chat.ChatHandler) 
 	r.Get("/api/usage/request-details", HandleRequestDetails(repo))
 	r.Get("/api/usage/export", HandleUsageExport(repo))
 	r.Get("/api/usage/request-details/{id}", HandleRequestDetail(repo))
+	// MiniMax Code daily check-in state and the manual "Check in now" action.
+	// Registered here (the real server's dashboard group, under
+	// RequireDashboardAuth) as well as in dashboard.RegisterRoutes (tests-only):
+	// a route added to that table alone 404s on a production boot.
+	r.Get("/api/minimax/checkins", dashH.HandleGetMiniMaxCheckins)
+	r.Post("/api/minimax/checkins/{connectionId}", dashH.HandleMiniMaxCheckinNow)
 	r.Get("/api/usage/providers", dashH.HandleGetUsageProviders)
 	// Usage per client API key. Registered before the {connectionId} route:
 	// chi matches in order, so a route added after it would be read as a
@@ -553,6 +559,9 @@ func mountOAuthRoutes(r interface {
 	r.Post("/api/oauth/free-pi/session/reset", oauthH.HandleFreePiSessionReset)
 	r.Get("/api/oauth/antigravity/authorize", oauthH.HandleAntigravityAuthorize)
 	r.Post("/api/oauth/antigravity/exchange", oauthH.HandleAntigravityExchange)
+	// agy-acp: same Google consumer OAuth client, its own connection rows.
+	r.Get("/api/oauth/agy-acp/authorize", oauthH.HandleAGYACPAuthorize)
+	r.Post("/api/oauth/agy-acp/exchange", oauthH.HandleAGYACPExchange)
 	r.Get("/api/oauth/cline/authorize", oauthH.HandleClineAuthorize)
 	r.Post("/api/oauth/cline/exchange", oauthH.HandleClineExchange)
 	r.Get("/api/oauth/pkce/authorize", oauthH.HandlePKCEAuthorize)

@@ -32,6 +32,7 @@
   import { copyToClipboard } from '../../lib/clipboard'
   import { parseModelIds } from '../../lib/bulk-models'
   import { inferModelKind, customModelKeyFor } from '../../lib/modelKindInference'
+  import type { CustomModelType } from './modelTypeOptions'
   import {
     importCustomModelsBestEffort,
     notifyCustomModelsChanged,
@@ -320,7 +321,7 @@
       // model unreachable: correctly absent from /v1/models, and equally absent
       // from the one screen that could remove it. The row carries its kind so
       // delete addresses the right key.
-      const full = `${storageAlias}/${cm.id}`
+      const full = `${displayAlias()}/${cm.id}`
       if (seen.has(full)) continue
       seen.add(full)
       // The kv store carries no per-row timestamp, so the add date is the
@@ -599,7 +600,7 @@
     return dashboardCallbackURL(dashboardOrigin())
   }
 
-  function antigravityCallback(): string {
+  function loopbackCallback(): string {
     if (typeof window === 'undefined') return 'http://localhost:8080/callback'
     return oauthLoopbackCallbackURL(window.location.port, window.location.protocol === 'https:')
   }
@@ -682,7 +683,7 @@
     }
     window.addEventListener('storage', onStorage)
     const onWindowMessage = (e: MessageEvent) => {
-      const trustedOrigin = e.origin === window.location.origin || e.origin === new URL(antigravityCallback()).origin
+      const trustedOrigin = e.origin === window.location.origin || e.origin === new URL(loopbackCallback()).origin
       if (!trustedOrigin) return
       if (e.data?.type === 'oauth_callback' && e.data?.data) {
         const data = e.data.data as {
@@ -1582,12 +1583,13 @@
   }
   // Add Connection Button flow
   async function handleAddConnectionClick() {
-    if (providerId === 'antigravity') {
-      const confirmed = typeof window !== 'undefined' && localStorage.getItem('ag_risk_confirmed') === 'true'
+    if (providerId === 'antigravity' || providerId === 'agy-acp') {
+      const riskKey = providerId === 'agy-acp' ? 'agcpy_risk_confirmed' : 'ag_risk_confirmed'
+      const confirmed = typeof window !== 'undefined' && localStorage.getItem(riskKey) === 'true'
       if (!confirmed) {
         showRiskNoticeModal = true
       } else {
-        openAntigravityOAuth()
+        openGoogleConsumerOAuth()
       }
     } else if (providerId === 'freebuff') {
       startFreebuffFlow()
@@ -1623,19 +1625,24 @@
 
   function confirmRiskAndProceed() {
     if (typeof window !== 'undefined') {
-      localStorage.setItem('ag_risk_confirmed', 'true')
+      localStorage.setItem(providerId === 'agy-acp' ? 'agcpy_risk_confirmed' : 'ag_risk_confirmed', 'true')
     }
     showRiskNoticeModal = false
-    openAntigravityOAuth()
+    openGoogleConsumerOAuth()
   }
 
-  async function openAntigravityOAuth() {
+  // antigravity and agy-acp share the Google consumer OAuth client; each
+  // exchanges into its own provider's connection rows.
+  async function openGoogleConsumerOAuth() {
     oauthError = null
     callbackInput = ''
     copiedAuthUrl = false
     try {
-      const redirectUri = antigravityCallback()
-      const res = await api.getAntigravityAuthorizeUrl(redirectUri)
+      const redirectUri = loopbackCallback()
+      const res =
+        providerId === 'agy-acp'
+          ? await api.getAGYACPAuthorizeUrl(redirectUri)
+          : await api.getAntigravityAuthorizeUrl(redirectUri)
       oauthAuthUrl = res.authUrl || res.url || res.redirectUrl
       if (res.state) {
         rememberPending({
@@ -1659,7 +1666,14 @@
     try {
       // Codex cannot use the dashboard callback: OpenAI only accepts the
       // redirect URI registered for the Codex CLI client.
-      const cb = providerId === 'codex' ? CODEX_REDIRECT_URI : dashboardCallback()
+      // Claude's public client only registers loopback callbacks, so a custom
+      // domain /callback is refused ("Redirect URI ... is not supported").
+      const cb =
+        providerId === 'codex'
+          ? CODEX_REDIRECT_URI
+          : providerId === 'claude'
+            ? loopbackCallback()
+            : dashboardCallback()
       const res = await api.pkceAuthorize(
         providerId,
         providerId === 'gitlab'
@@ -2388,7 +2402,7 @@
         }
         return
       }
-      if (providerId !== 'antigravity') {
+      if (providerId !== 'antigravity' && providerId !== 'agy-acp') {
         if (raw.includes('code=') || raw.includes('http')) {
           oauthError = `Direct OAuth login is not supported for ${providerName}. Paste an access token / refresh token instead.`
           return
@@ -2412,8 +2426,11 @@
       } catch {
         pending = null
       }
-      const exchangeRedirectUri = redirectUri || pending?.redirectUri || antigravityCallback()
-      const res = await api.antigravityExchange(code, exchangeRedirectUri, pending?.state)
+      const exchangeRedirectUri = redirectUri || pending?.redirectUri || loopbackCallback()
+      const res =
+        providerId === 'agy-acp'
+          ? await api.agyACPExchange(code, exchangeRedirectUri, pending?.state)
+          : await api.antigravityExchange(code, exchangeRedirectUri, pending?.state)
       if (res?.success === false || (res as { error?: string })?.error) {
         oauthError = (res as { error?: string })?.error || 'Authorization failed'
       } else {
@@ -2430,7 +2447,7 @@
   // Model actions
   function copyModelId(modelId: string) {
     const level = resolveThinkingSuffix(modelId)
-    const full = `${storageAlias}/${modelId}${level ? `(${level})` : ''}`
+    const full = `${displayAlias()}/${modelId}${level ? `(${level})` : ''}`
     copyToClipboard(full)
     copiedModelId = modelId
     setTimeout(() => (copiedModelId = null), 2000)
@@ -2513,13 +2530,17 @@
     modelId: string,
     caps?: { vision?: boolean; reasoning?: boolean; jailbreak?: boolean },
     limits?: { contextWindow?: number; maxOutput?: number },
+    modelType?: CustomModelType,
   ) {
+    // The modal picks the kind; the id is only consulted for a caller that adds
+    // a model without going through it.
+    const kind = modelType ?? inferModelKind(modelId)
     try {
-      await api.saveCustomModel(customModelKeyFor(storageAlias, modelId), {
+      await api.saveCustomModel(customModelKeyFor(storageAlias, modelId, kind), {
         id: modelId,
         providerAlias: storageAlias,
-        type: inferModelKind(modelId),
-        ...(caps ? { caps } : {}),
+        type: kind,
+        ...(kind !== 'llm' ? {} : caps ? { caps } : {}),
         ...(limits?.contextWindow ? { contextWindow: limits.contextWindow } : {}),
         ...(limits?.maxOutput ? { maxOutput: limits.maxOutput } : {}),
       })
@@ -2915,14 +2936,24 @@
             : undefined
         // An endpoint that reports its own limits is the authoritative source;
         // saving them means /v1/models keeps publishing them after the row
-        // outlives this import.
+        // outlives this import. OpenRouter-style feeds spell them snake_case
+        // (context_length / max_completion_tokens); normalized catalogues
+        // (nous, qoder, zed) spell them camelCase (contextLength /
+        // maxOutputTokens) — reading only the first shape dropped the 1M
+        // window nous/qwen4-max declares and published the 131k name guess.
         const declaredCtxLen =
-          typeof m === 'object' && m !== null && 'context_length' in m
-            ? Number(m.context_length) || 0
+          typeof m === 'object' && m !== null
+            ? Number(
+                ('context_length' in m ? m.context_length : undefined) ??
+                  ('contextLength' in m ? m.contextLength : undefined),
+              ) || 0
             : 0
         const declaredMaxOut =
-          typeof m === 'object' && m !== null && 'max_completion_tokens' in m
-            ? Number(m.max_completion_tokens) || 0
+          typeof m === 'object' && m !== null
+            ? Number(
+                ('max_completion_tokens' in m ? m.max_completion_tokens : undefined) ??
+                  ('maxOutputTokens' in m ? m.maxOutputTokens : undefined),
+              ) || 0
             : 0
         pending.push({
           id: modelId,
@@ -3871,7 +3902,7 @@
             <span class="material-symbols-outlined text-[18px]">vpn_key</span>
             {isAuthorizingFreebuff ? 'Polling Authorization...' : 'Authorize Freebuff CLI'}
           </button>
-        {:else if providerId === 'antigravity'}
+        {:else if providerId === 'antigravity' || providerId === 'agy-acp'}
           <button
             type="button"
             onclick={handleAddConnectionClick}
@@ -4816,7 +4847,7 @@
     <div class="flex flex-wrap gap-3">
       {#each gridModels as model (model.id)}
         {@const level = resolveThinkingSuffix(model.id)}
-        {@const fullModelId = `${storageAlias}/${model.id}${level ? `(${level})` : ''}`}
+        {@const fullModelId = `${displayAlias()}/${model.id}${level ? `(${level})` : ''}`}
         {@const rowCaps = modelCaps[model.id] ?? model.caps}
         {@const testStatus = modelTestStatuses[model.id]}
         {@const isTestingThis = testStatus === 'testing'}

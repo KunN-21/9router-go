@@ -195,7 +195,7 @@ export interface APIKeyPolicy {
   name?: string
   /** Plan template to inherit. An empty string detaches the key. */
   planId?: string
-  /**
+/**
    * Per-period cost budget, in integer USD micros (1e-6 of a dollar). Always send
    * a number: the server treats an omitted field as "keep stored value" and an
    * explicit 0 as "disable", so 0 is how the operator clears a cost limit.
@@ -209,6 +209,10 @@ export interface APIKeyPolicy {
   alertPct?: number
   /** True when exhausted requests are refused with 402; false when they only carry a warning header. */
   hardCutoff?: boolean
+  /** Model allowlist, in the shape the policy route writes it whole.
+   *  `restricted` accompanies `allow`: an omitted flag means "unrestricted", so
+   *  sending only `allow` does not restrict a key. */
+  access?: { restricted?: boolean; allow: string[] }
 }
 
 /**
@@ -344,6 +348,8 @@ export interface Settings {
   headroomKompress?: boolean
   /** Qoder / Qoder CN daily-credit check-in. */
   qoderCheckin?: boolean
+  /** MiniMax Code daily check-in (每日签到). */
+  minimaxCheckin?: boolean
   semanticCacheEnabled?: boolean
   semanticCacheTTL?: number
   // Prompt-cache window 9router pins on Claude head anchors: "5m" (default) or "1h".
@@ -1436,6 +1442,19 @@ export function normalizeConnection(c: ProviderConnection): ProviderConnection {
   } as ProviderConnection
 }
 
+// One MiniMax Code account's last daily check-in outcome, as the background
+// loop records it. Mirrors internal/minimaxcheckin.Result.
+export interface MiniMaxCheckinResult {
+  outcome: 'claimed' | 'done' | 'inactive' | 'ineligible' | 'failed'
+  credit: number
+  streak: number
+  message?: string
+  provider: string
+  account: string
+  accountId: string
+  checkedAt: string
+}
+
 // Connections API
 export const api = {
   // Connections
@@ -1628,7 +1647,7 @@ export const api = {
     ),
   /** List models from a connection's upstream (compatible nodes; upstream GET /api/providers/[id]/models). */
   getConnectionModels: (connectionId: string) =>
-    request<{ provider: string; connectionId: string; models: Array<{ id?: string; name?: string; model?: string } | string> }>(
+    request<{ provider: string; connectionId: string; models: Array<{ id?: string; name?: string; model?: string; context_length?: number; contextLength?: number; max_completion_tokens?: number; maxOutputTokens?: number; capabilities?: { vision?: boolean; reasoning?: boolean } } | string> }>(
       `/api/providers/${encodeURIComponent(connectionId)}/models`,
     ),
 
@@ -2013,6 +2032,14 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(settings),
     }),
+  // MiniMax Code daily check-in: the last outcome per account, and an
+  // immediate claim for one connection (magpie's "Check in now").
+  getMiniMaxCheckins: () =>
+    request<{ checkins: Record<string, MiniMaxCheckinResult> }>('/api/minimax/checkins'),
+  miniMaxCheckinNow: (connectionId: string) =>
+    request<MiniMaxCheckinResult>(`/api/minimax/checkins/${encodeURIComponent(connectionId)}`, {
+      method: 'POST',
+    }),
   /**
    * Reads live USD rates for the requested codes and overlays them on the
    * stored table. `codes` is the catalog the dashboard offers
@@ -2118,6 +2145,15 @@ export const api = {
     ),
   antigravityExchange: (code: string, redirectUri: string, state?: string) =>
     request<{ success: boolean; error?: string }>('/api/oauth/antigravity/exchange', {
+      method: 'POST',
+      body: JSON.stringify({ code, redirectUri, state }),
+    }),
+  getAGYACPAuthorizeUrl: (redirectUri: string) =>
+    request<{ url: string; redirectUrl: string; authUrl: string; state: string; redirectUri: string }>(
+      `/api/oauth/agy-acp/authorize?redirect_uri=${encodeURIComponent(redirectUri)}`,
+    ),
+  agyACPExchange: (code: string, redirectUri: string, state?: string) =>
+    request<{ success: boolean; error?: string }>('/api/oauth/agy-acp/exchange', {
       method: 'POST',
       body: JSON.stringify({ code, redirectUri, state }),
     }),
