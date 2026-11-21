@@ -581,16 +581,50 @@ func extractContent(content any) string {
 	case []any:
 		parts := make([]string, 0, len(v))
 		for _, block := range v {
-			if m, ok := block.(map[string]any); ok {
-				if text, ok := m["text"].(string); ok {
-					parts = append(parts, text)
-				}
+			m, ok := block.(map[string]any)
+			if !ok {
+				continue
+			}
+			// A Claude block carries its text under text/thinking/tool_use.input/
+			// tool_result.content, never all under "text". Reading only "text"
+			// logged every tool turn as an empty message, so the detail view
+			// showed a 186k-token request as twenty empty rows and a lost tool
+			// result could not be diagnosed from it.
+			switch blockType(m) {
+			case "tool_use":
+				name, _ := m["name"].(string)
+				input, _ := json.Marshal(m["input"])
+				parts = append(parts, fmt.Sprintf("[tool_use %s %s]", name, truncateDetailText(string(input), 200, "...")))
+			case "tool_result":
+				parts = append(parts, "[tool_result "+truncateDetailText(extractContent(m["content"]), 400, "...")+"]")
+			case "thinking":
+				parts = append(parts, "[thinking "+truncateDetailText(m["thinking"].(string), 200, "...")+"]")
+			}
+			if text, ok := m["text"].(string); ok {
+				parts = append(parts, text)
 			}
 		}
 		return strings.Join(parts, " ")
 	default:
 		return fmt.Sprintf("%v", content)
 	}
+}
+
+// blockType names a content block by its own type field, falling back to the
+// key that carries its payload for clients that omit it.
+func blockType(m map[string]any) string {
+	if t, ok := m["type"].(string); ok && t != "" {
+		return t
+	}
+	switch {
+	case m["input"] != nil:
+		return "tool_use"
+	case m["tool_use_id"] != nil:
+		return "tool_result"
+	case m["thinking"] != nil:
+		return "thinking"
+	}
+	return ""
 }
 
 // upsertDailyUsage reads the existing daily aggregate, merges new tokens, and upserts.

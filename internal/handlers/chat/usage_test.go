@@ -416,3 +416,28 @@ func BenchmarkTruncateDetailTextNoCut(b *testing.B) {
 		}
 	}
 }
+
+// A Claude tool turn used to be logged as an empty message: extractContent read
+// only a block's "text" key, which a tool_use and a tool_result do not have.
+func TestExtractContentKeepsClaudeToolBlocks(t *testing.T) {
+	got := extractContent([]any{
+		map[string]any{"type": "tool_use", "id": "t1", "name": "Bash", "input": map[string]any{"command": "ls"}},
+		map[string]any{"type": "tool_result", "tool_use_id": "t1", "content": "NEEDLE-RESULT"},
+		map[string]any{"type": "thinking", "thinking": "NEEDLE-THOUGHT"},
+	})
+	for _, want := range []string{"tool_use Bash", "NEEDLE-RESULT", "NEEDLE-THOUGHT"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("logged content dropped %q: %q", want, got)
+		}
+	}
+}
+
+// A plain text block must still log as its own text, unchanged.
+func TestExtractContentKeepsPlainText(t *testing.T) {
+	if got := extractContent([]any{map[string]any{"type": "text", "text": "hello"}}); got != "hello" {
+		t.Errorf("plain text changed: %q", got)
+	}
+	if got := extractContent("already a string"); got != "already a string" {
+		t.Errorf("string content changed: %q", got)
+	}
+}
