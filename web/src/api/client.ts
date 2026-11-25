@@ -1190,6 +1190,48 @@ export interface JailbreakDoc {
   createdAt?: string
   /** RFC3339 UTC stamp of the last write. */
   updatedAt?: string
+  /**
+   * Provenance of a preset the auto-sync worker wrote: the repository it came
+   * from ("owner/repo@ref") and the file inside it. A preset carrying both is
+   * rewritten by every pass of that source; one carrying neither was typed,
+   * uploaded or imported by hand and sync never touches it.
+   */
+  syncOrigin?: string
+  syncPath?: string
+}
+
+/** One GitHub collection the preset library auto-syncs from. */
+export interface JailbreakSyncSource {
+  id: string
+  /** Anything the GitHub import accepts: owner/repo, a GitHub URL, or a raw file URL. */
+  target: string
+  /** Branch, tag or sha to follow. Empty follows the repository default. */
+  ref?: string
+  /** Paused sources are kept and never fetched. */
+  enabled: boolean
+  /** Label the panel shows; derived from the target when absent. */
+  name?: string
+  lastSyncAt?: string
+  lastError?: string
+  lastResult?: JailbreakSyncResult
+}
+
+/** What one pass of one source did. */
+export interface JailbreakSyncResult {
+  written: number
+  updated: number
+  orphaned: number
+  failed: number
+  files?: JailbreakSyncFile[]
+}
+
+/** One file of one pass. */
+export interface JailbreakSyncFile {
+  path: string
+  preset?: string
+  /** "written" | "updated" | "unchanged" | "orphaned" | "failed" */
+  action: string
+  reason?: string
 }
 
 /**
@@ -2390,11 +2432,11 @@ export const api = {
       body: JSON.stringify({ apiKey, region }),
     }),
   kiroSocialAuthorize: (provider: 'google' | 'github') =>
-    request<{ authUrl: string; url: string; state: string }>(`/api/oauth/kiro/social-authorize?provider=${provider}`),
-  kiroSocialExchange: (code: string) =>
+    request<{ authUrl: string; url: string; state: string; codeVerifier: string }>(`/api/oauth/kiro/social-authorize?provider=${provider}`),
+  kiroSocialExchange: (code: string, codeVerifier: string, provider?: 'google' | 'github') =>
     request<{ success: boolean; id?: string; error?: string }>('/api/oauth/kiro/social-exchange', {
       method: 'POST',
-      body: JSON.stringify({ code }),
+      body: JSON.stringify({ code, codeVerifier, provider }),
     }),
   cursorImport: (accessToken: string, machineId: string) =>
     request<{ success: boolean; id: string; error?: string }>('/api/oauth/cursor/import', {
@@ -2823,6 +2865,58 @@ export const api = {
     } catch {}
     return { requireLogin: false }
   },
+  // the dashboard password from the browser before the first login. The
+  // server only accepts this from a loopback peer while no password is stored.
+  getSetup: async (): Promise<{ status: boolean; databaseType: string }> => {
+    const res = await fetch('/api/setup')
+    if (!res.ok) return { status: false, databaseType: 'sqlite' }
+    const data = await res.json()
+    return { status: !!data.status, databaseType: data.databaseType || 'sqlite' }
+  },
+  setup: async (
+    password: string,
+    advancedMode?: boolean
+  ): Promise<{ success: boolean; error?: string }> => {
+    const res = await fetch('/api/setup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password, ...(advancedMode === undefined ? {} : { advancedMode }) }),
+    })
+    if (res.ok) {
+      sessionStorage.setItem('9router_auth', 'true')
+      localStorage.setItem('9router_auth', 'true')
+      return { success: true }
+    }
+    let errText = 'Setup failed'
+    try {
+      const errJson = await res.json()
+      errText = errJson.error?.message || errJson.error || errJson.message || errText
+    } catch {}
+    return { success: false, error: errText }
+  },
+  // Skip the password step: the dashboard answers without a login (the same
+  // switch Settings > Security exposes as "Require login"), so this is only
+  // offered on a fresh install from the local machine.
+  setupSkip: async (): Promise<{ success: boolean; error?: string }> => {
+    const res = await fetch('/api/setup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ skipPassword: true }),
+    })
+    if (res.ok) {
+      // The server sets the httpOnly auth_token cookie on success; the client
+      // gate mirrors what api.login does.
+      sessionStorage.setItem('9router_auth', 'true')
+      localStorage.setItem('9router_auth', 'true')
+      return { success: true }
+    }
+    let errText = 'Setup failed'
+    try {
+      const errJson = await res.json()
+      errText = errJson.error?.message || errJson.error || errJson.message || errText
+    } catch {}
+    return { success: false, error: errText }
+  },
   login: async (password: string, newPassword?: string): Promise<LoginResponse> => {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
@@ -2935,6 +3029,8 @@ export const api = {
     keywords?: JailbreakKeyword[]
     excludes?: JailbreakKeyword[]
     order?: number
+    syncOrigin?: string
+    syncPath?: string
   }) =>
     request<{ success: boolean }>('/api/jailbreak/presets', {
       method: 'PUT',
@@ -2945,6 +3041,43 @@ export const api = {
       method: 'DELETE',
     }),
   listJailbreakModels: () => request<Record<string, JailbreakModelConfig>>('/api/jailbreak/models'),
+  // Preset auto-sync: the GitHub collections the library follows. One pass
+  // rewrites only the presets it wrote itself, so an operator's hand-made
+  // preset is never touched and a file upstream dropped is reported as
+  // orphaned rather than deleted.
+  listJailbreakSyncSources: () =>
+    request<{ sources: JailbreakSyncSource[] }>('/api/jailbreak/sync/sources'),
+  saveJailbreakSyncSources: (sources: JailbreakSyncSource[]) =>
+    request<{ sources: JailbreakSyncSource[]; ok: boolean }>('/api/jailbreak/sync/sources', {
+      method: 'PUT',
+      body: JSON.stringify({ sources }),
+    }),
+  runJailbreakSync: () =>
+    request<{ outcomes: { source: JailbreakSyncSource; result: JailbreakSyncResult }[]; ok: boolean }>(
+      '/api/jailbreak/sync/run',
+      { method: 'POST' },
+    ),
+  // GitHub credential and mirror. The api.github.com quota is 60 anonymous
+  // requests an hour and 5,000 with a token, so a library following several
+  // collections needs one. The token is never returned by the GET — only
+  // whether one is set and where it came from.
+  getJailbreakGithub: () =>
+    request<{
+      tokenSet: boolean
+      source: 'dashboard' | 'environment' | 'none'
+      apiBase: string
+      rawBase: string
+      envToken: boolean
+      envMirror: boolean
+      /** Bodies held for a conditional (If-None-Match) re-fetch. */
+      cached: number
+      cacheMax: number
+    }>('/api/jailbreak/github'),
+  setJailbreakGithubToken: (token: string) =>
+    request<{ ok: boolean; tokenSet: boolean }>('/api/jailbreak/github/token', {
+      method: 'PUT',
+      body: JSON.stringify({ token }),
+    }),
   setJailbreakModel: (id: string, presetId: string, enabled: boolean) =>
     request<{ success: boolean }>('/api/jailbreak/models', {
       method: 'PUT',
@@ -3003,6 +3136,29 @@ export const api = {
     }>('/api/jailbreak/preview', {
       method: 'POST',
       body: JSON.stringify({ id, messages }),
+    }),
+  /**
+   * The same preview, resolved under one client API key's scope.
+   *
+   * The gateway's preview endpoint already reads `apiKeyId` from the body — the
+   * tester needs both scopes of one id to diff them, and passing the key here is
+   * what makes the second body the one that key would actually carry.
+   */
+  previewJailbreakKey: (
+    id: string,
+    messages: { role: string; content: string }[],
+    apiKeyId: string,
+  ) =>
+    request<{
+      injected: boolean
+      reason: string
+      presetId?: string
+      presetName?: string
+      prompt?: string
+      messages: { role: string; content: string }[]
+    }>('/api/jailbreak/preview', {
+      method: 'POST',
+      body: JSON.stringify({ id, messages, apiKeyId }),
     }),
   reorderJailbreakPresets: (order: string[]) =>
     request<{ ok: boolean }>('/api/jailbreak/presets/order', {
