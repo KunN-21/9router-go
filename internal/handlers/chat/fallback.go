@@ -2306,7 +2306,7 @@ func sanitizeOutboundToolSchemas(body []byte, provider string) []byte {
 	}
 	bodyMap["tools"] = normalized
 	log.Debug("tool_schema", "stripped invalid patterns", "provider", provider, "removed", removed)
-	if newBody, err := json.Marshal(bodyMap, json.Deterministic(true)); err == nil {
+	if newBody, err := json.Marshal(bodyMap); err == nil {
 		return newBody
 	}
 	return body
@@ -2433,7 +2433,7 @@ func claudeBodyForNonClaudeUpstream(body []byte, upstreamSpeaksClaude bool, prov
 		return converted
 	}
 	dst["stream"] = stream
-	out, err := json.Marshal(dst, json.Deterministic(true))
+	out, err := json.Marshal(dst)
 	if err != nil {
 		return converted
 	}

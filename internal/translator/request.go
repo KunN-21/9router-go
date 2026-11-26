@@ -1510,7 +1510,7 @@ func DropArgumentlessToolCalls(body []byte) []byte {
 		messagesRaw = filtered
 		req["messages"] = messagesRaw
 	}
-	out, err := json.Marshal(req, json.Deterministic(true))
+	out, err := json.Marshal(req)
 	if err != nil {
 		return body
 	}
@@ -1767,7 +1767,7 @@ func applyInlineToolEdits(body []byte) []byte {
 	} else {
 		delete(req, "tools")
 	}
-	updated, err := json.Marshal(req, json.Deterministic(true))
+	updated, err := json.Marshal(req)
 	if err != nil {
 		return body
 	}
