@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"9router/proxy/internal/auth"
 	"9router/proxy/internal/clientconfig"
 	"9router/proxy/internal/constants"
 	"9router/proxy/internal/db"
@@ -236,6 +237,9 @@ func SetupRoutes(r interface {
 // browser session, a valid API key or the local CLI token through when login is
 // enabled (upstream dashboardGuard).
 func SetupDashboardRoutes(r chi.Router, repo *db.Repo, chatH *chat.ChatHandler) {
+	// Install the session revocation epoch before any token is issued: a token
+	// minted against a stale epoch would be refused on its very next request.
+	auth.LoadSessionEpoch(repo)
 	var ts *TokenSaverConfig
 	if chatH != nil {
 		ts = chatH.TokenSaver
@@ -351,6 +355,7 @@ func SetupDashboardRoutes(r chi.Router, repo *db.Repo, chatH *chat.ChatHandler) 
 	r.Get("/api/jailbreak/models/catalog", dashH.HandleJailbreakModelCatalog)
 	r.Put("/api/jailbreak/models", dashH.HandleSetJailbreakModel)
 	r.Put("/api/jailbreak/keys/model", dashH.HandleSetJailbreakKeyModel)
+	r.Delete("/api/jailbreak/keys/model", dashH.HandleDeleteJailbreakKeyModel)
 	r.Get("/api/jailbreak/keys/bindings", dashH.HandleListJailbreakKeyBindings)
 	r.Delete("/api/jailbreak/models", dashH.HandleDeleteJailbreakModel)
 	r.Get("/api/jailbreak/excludes", dashH.HandleGetJailbreakExcludes)
@@ -493,6 +498,9 @@ func SetupDashboardRoutes(r chi.Router, repo *db.Repo, chatH *chat.ChatHandler) 
 	r.Post("/api/settings/database/prune", dashH.HandlePruneDatabase)
 	r.Post("/api/settings/database/prune-usage", dashH.HandlePruneUsageHistory)
 	r.Post("/api/settings/database/vacuum", dashH.HandleVacuumDatabase)
+	// Process control. The mirror of dashboard.RegisterRoutes, which is mounted
+	// by tests only; a route added there alone 404s here on the real server.
+	r.Post("/api/system/restart", dashH.HandleRestartGateway)
 	r.Post("/api/settings/proxy-test", dashH.HandleProxyTest)
 	// White-label logo upload: the file lands under DATA_DIR/uploads and
 	// appLogoUrl is rewritten to the path this gateway serves it from.

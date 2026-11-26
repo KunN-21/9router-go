@@ -2182,6 +2182,14 @@ export const api = {
       '/api/settings/database/vacuum',
       { method: 'POST' }
     ),
+  // The body carries the confirmation word: the gateway ignores a restart
+  // request that could not set a JSON body, so a cross-site form post cannot
+  // stop the process.
+  restartGateway: () =>
+    request<{ success: boolean; restarting: boolean }>('/api/system/restart', {
+      method: 'POST',
+      body: JSON.stringify({ confirm: 'restart' }),
+    }),
   testRtk: (data: { text: string; config?: Record<string, unknown> }) =>
     request<{
       originalTokens: number
@@ -2245,18 +2253,18 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ connectionId, model }),
     }),
-  getAntigravityAuthorizeUrl: (redirectUri: string) =>
+  getAntigravityAuthorizeUrl: (redirectUri: string, proxy = false) =>
     request<{ url: string; redirectUrl: string; authUrl: string; state: string; redirectUri: string }>(
-      `/api/oauth/antigravity/authorize?redirect_uri=${encodeURIComponent(redirectUri)}`,
+      `/api/oauth/antigravity/authorize?redirect_uri=${encodeURIComponent(redirectUri)}${proxy ? '&proxy=1' : ''}`,
     ),
   antigravityExchange: (code: string, redirectUri: string, state?: string) =>
     request<{ success: boolean; error?: string }>('/api/oauth/antigravity/exchange', {
       method: 'POST',
       body: JSON.stringify({ code, redirectUri, state }),
     }),
-  getAGYACPAuthorizeUrl: (redirectUri: string) =>
+  getAGYACPAuthorizeUrl: (redirectUri: string, proxy = false) =>
     request<{ url: string; redirectUrl: string; authUrl: string; state: string; redirectUri: string }>(
-      `/api/oauth/agy-acp/authorize?redirect_uri=${encodeURIComponent(redirectUri)}`,
+      `/api/oauth/agy-acp/authorize?redirect_uri=${encodeURIComponent(redirectUri)}${proxy ? '&proxy=1' : ''}`,
     ),
   agyACPExchange: (code: string, redirectUri: string, state?: string) =>
     request<{ success: boolean; error?: string }>('/api/oauth/agy-acp/exchange', {
@@ -3133,6 +3141,14 @@ export const api = {
         body: JSON.stringify({ keyId, id, presetId, enabled }),
       },
     ),
+  // Drop one key-scoped binding outright. The per-key delete button calls this;
+  // unlike setJailbreakKeyModel('off'), which only turns the row off, this
+  // removes it. The same model's global binding is untouched.
+  deleteJailbreakKeyModel: (keyId: string, id: string) =>
+    request<{ ok: boolean; keyId: string; id: string }>('/api/jailbreak/keys/model', {
+      method: 'DELETE',
+      body: JSON.stringify({ keyId, id }),
+    }),
   deleteJailbreakModel: (id: string) =>
     request<{ ok: boolean; id: string }>('/api/jailbreak/models', {
       method: 'DELETE',
